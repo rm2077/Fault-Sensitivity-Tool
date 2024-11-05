@@ -1,29 +1,47 @@
-import numpy as np
-import random
-
 '''
+Run Monte Carlo simulation on 3D Mohr's Circle function with stochastic inputs
+
 Inputs:
-f:     function handle of map to run Monte Carlo On
-in0:   cell array of nominal inputs to function, i.e. f(in0) produces the function output
-inSig: sigma (gaussian) cell array for the sigma associated with each element of in0 or delta +/- in uniform distribution
-nruns: how many Monte Carlo Runs you want to do
+f       : function
+    Function handle
+in0     : array
+    Baseline inputs for f
+inSig   : array
+    Variance values for each element of in0
+nruns   : int
+    Monte Carlo runs, default: Uniform
+dist    : str, default: Uniform
+    Distribution ("Uniform", "Normal", or "Lognormal")
 
 Outputs:
-Out: desired outputs
-inj: inputted variables
+out     : Array
+    Output values from each run
+inj     : Array of arrays
+    Perturbed input values for each run
 '''
 
-def monte_carlo(f, in0, inSig, nruns):
-    out = np.zeros(nruns)	        # Preallocate
-    inj = np.zeros(nruns, len(in0))	# Preallocate
+import numpy as np
 
-    for jj in range(nruns):
-        inj = in0   # Reassign
-        for k in range(len(in0)):
-            inj[jj][k] = inj[k] + inSig[k] * random.randint(1, len(inSig[k]))               # Normal Distribution
-            inj[jj][k] = in0[k] + inSig[k] * (2 * random.randint(1, len(inSig[k])) - 1)     # Uniform Distribution
-            inj[jj][k] = np.random.lognormal(np.log(in0[k]), np.log(1 + inSig[k] / in0[k])) # Lognormal Distribution
+def monte_carlo(f, in0, inSig, nruns = 1000, dist = "Uniform"):
+    # Preallocate output arrays
+    out = np.zeros(nruns)
+    inj = [in0.copy() for _ in range(nruns)]
 
-    out[jj] = f(inj[jj, :])
+    # Run Monte Carlo simulation
+    for i in range(nruns):
+        # Perturb each input according to specified distribution
+        for j in range(len(in0)):
+            if dist == "Uniform":
+                inj[i][j] = np.random.uniform(in0[j] - inSig[j], in0[j] + inSig[j])
+            elif dist == "Normal":
+                inj[i][j] = np.random.normal(in0[j], inSig[j])
+            elif dist == "Lognormal":
+                inj[i][j] = np.random.lognormal(np.log(in0[j]), inSig[j])
+            else:
+                raise ValueError("Unknown distribution specified.")
+
+        # Run function with perturbed inputs
+        result = f(*inj[i])
+        out[i] = result[0]
 
     return out, inj
