@@ -1,121 +1,58 @@
-'''
-Calculate 3D Mohr's Circle for stress analysis
-
-Inputs:
-Sig01   : int
-    Initial maximum principal stresses
-Sig02   : int
-    Initial intermediate principal stresses
-Sig03   : int
-    Initial minimum principal stresses
-ixSv    : int
-    Vertical principal stress index (1, 2, or 3)
-strike  : int
-    Strike fault orientation in degrees
-dip     : int
-    Dip fault orientation in degrees
-SHdir   : int
-    Maximum horizontal stress direction in degrees
-p0      : float
-    Initial pore pressure
-dp      : float
-    Pressure pertubation
-mu      : float
-    Friction coefficient
-APhi    : float, optional
-    Friction angle parameter, default: None
-ref_mu  : float, optional
-    Reference friction angle, default: None
-biot    : float, optional
-    Biot coefficient (Poroelasticity), default: 1.0
-nu      : float, optional
-    Poisson's ratio (Poroelasticity), default: 0.5
-
-Outputs:
-ppfail      : float
-    Pore pressure at failure (effective normal stress)
-cff         : float
-    Couloumb failure function
-scu         : float
-    Shear capacity utilization
-sig_fault   : array
-    Effective normal stress on fault
-tau_fault   : array
-    Effective shear stress on fault 
-'''
-
 import matplotlib.pyplot as plt
 import numpy as np
-import get_hor_from_APhi
+from get_hor_from_APhi import get_hor_from_APhi
 
-def mohrs_3D_v2(Sig01, Sig02, Sig03, ixSv, strike, dip, SHdir, p0, dp, mu, APhi = None, ref_mu = None, biot = 1, nu = 0.5):
-    Sig0 = [Sig01, Sig02, Sig03]
-
-    if len(Sig0) != 3:
-        raise ValueError(f'Sig0 should include 3 elements. You have {len(Sig0)} elements.')
-
-    if ixSv not in [1, 2, 3]:
-        raise ValueError(f'ixSv should be 1, 2, or 3. You have ixSv = {ixSv}.')
-
-    # Sort initial stresses in descending order
-    Sig0 = np.sort(Sig0)[::-1]
-
-    # Determine vertical stress
-    Sv = Sig0[int(ixSv) - 1]
-
-    # Compute horizontal stresses using APhi (if provided)
-    if APhi is not None and ref_mu is not None:
+def mohrs_3D_v2(strike, dip, mu, SHdir, p0, dp, APhi, Sv_mag, SHmax_mag, Shmin_mag, ref_mu, biot, nu, plot = True):
+    # Calculate principal stress components using SHmax_mag and Shmin_mag
+    if SHmax_mag and Shmin_mag:
+        Sig0 = sorted([Sv_mag, SHmax_mag, Shmin_mag], reverse = True)
+        ixSv = Sig0.index(Sv_mag)
+    # Calculate principal stress components using APhi
+    elif APhi:
         if APhi < 0 or APhi > 3:
             raise ValueError(f'APhi should be in range [0,3]. You have APhi = {APhi}.')
 
-        SH, Sh = get_hor_from_APhi(APhi, Sv, ref_mu, p0)
+        SHmax_mag, Shmin_mag = get_hor_from_APhi(APhi, Sv_mag, ref_mu, p0)
 
-        if ixSv == 1:
-            Sig0 = [Sv, SH, Sh]
-        elif ixSv == 2:
-            Sig0 = [SH, Sv, Sh]
-        elif ixSv == 3:
-            Sig0 = [SH, Sh, Sv]
+        if 0 <= APhi < 1:
+            Sig0 = [Sv_mag, SHmax_mag, Shmin_mag]
+            ixSv = 0
+        elif 1 <= APhi < 2:
+            Sig0 = [SHmax_mag, Sv_mag, Shmin_mag]
+            ixSv = 1
+        elif 2 <= APhi <= 3:
+            Sig0 = [SHmax_mag, Shmin_mag, Sv_mag]
+            ixSv = 2
+    # Exit program with error if specified values do not exist.
+    else:
+        raise Exception('Either SHmax magnitude and Shmin magnitude should exist or APhi should exist')
 
-    # Compute effective stresses
+    # Calculate effective stresses and unit vectors
     Sig = np.array(Sig0) + biot * (1 - 2 * nu) / (1 - nu) * dp
-
-    # Unit vectors
     uSH = [np.cos(np.deg2rad(SHdir)), np.sin(np.deg2rad(SHdir)), 0]
     uV = [0, 0, 1]
 
-    # Direction cosines based on vertical stress index
-    if ixSv == 1:
+    if ixSv == 0:
         uSh = np.cross(uV, uSH)
-        uS3 = uSh
-        uS2 = uSH
-        uS1 = uV
-    elif ixSv == 2:
+        uS3, uS2, uS1 = uSh, uSH, uV
+    elif ixSv == 1:
         uSh = np.cross(uSH, uV)
-        uS3 = uSh
-        uS2 = uV
-        uS1 = uSH
-    elif ixSv == 3:
+        uS3, uS2, uS1 = uSh, uV, uSH
+    elif ixSv == 2:
         uSh = np.cross(uV, uSH)
-        uS3 = uV
-        uS2 = uSh
-        uS1 = uSH
+        uS3, uS2, uS1 = uV, uSh, uSH
 
-    # Fault normal vector
     uF = [-np.sin(np.deg2rad(dip)) * np.sin(np.deg2rad(strike)), 
           np.sin(np.deg2rad(dip)) * np.cos(np.deg2rad(strike)), 
           -np.cos(np.deg2rad(dip))]
 
-    # Effective stresses on fault
     Sigv = Sig - (p0 + dp)
-    l = np.dot(uF, uS1)
-    m = np.dot(uF, uS2)
-    n = np.dot(uF, uS3)
+    l, m, n = np.dot(uF, uS1), np.dot(uF, uS2), np.dot(uF, uS3)
 
     sig_fault = Sigv[0] * l**2 + Sigv[1] * m**2 + Sigv[2] * n**2
     tau_fault = np.sqrt((Sigv[0] * l)**2 + (Sigv[1] * m)**2 + (Sigv[2] * n)**2 - sig_fault**2)
 
-    # Calculate outputs
+    # Calculate output data
     ppfail = sig_fault - tau_fault / mu
     cff = tau_fault - mu * sig_fault
     scu = tau_fault / (mu * sig_fault)
@@ -125,28 +62,28 @@ def mohrs_3D_v2(Sig01, Sig02, Sig03, ixSv, strike, dip, SHdir, p0, dp, mu, APhi 
     R2 = 0.5 * (Sig0[1] - Sig0[2])
     R3 = 0.5 * (Sig0[0] - Sig0[1])
 
-    # Circle plots
     angles = np.linspace(0, 2 * np.pi, 100)
     C1 = R1 * np.exp(1j * angles) + (Sig0[0] + Sig0[2]) / 2 - (p0 + dp)
     C2 = R2 * np.exp(1j * angles) + (Sig0[1] + Sig0[2]) / 2 - (p0 + dp)
     C3 = R3 * np.exp(1j * angles) + (Sig0[0] + Sig0[1]) / 2 - (p0 + dp)
 
-    # Plotting
-    plt.figure()
-    plt.plot(np.real(C1), np.imag(C1), label = 'C1', color = 'blue')
-    plt.plot(np.real(C2), np.imag(C2), label = 'C2', color = 'orange')
-    plt.plot(np.real(C3), np.imag(C3), label = 'C3', color = 'green')
-    plt.plot([0, Sig0[0]], mu * np.array([0, Sig0[0]]), 'r', linewidth = 2, label = 'Friction Line')
-    plt.plot(sig_fault, tau_fault, 'og', markerfacecolor = 'g', label = 'Fault Point')
+    # Plot Mohr's Circle
+    if plot:
+        plt.figure()
+        plt.plot(np.real(C1), np.imag(C1), color = 'k')
+        plt.plot(np.real(C2), np.imag(C2), color = 'k')
+        plt.plot(np.real(C3), np.imag(C3), color = 'k')
+        plt.plot([0, Sig0[0]], mu * np.array([0, Sig0[0]]), 'r', linewidth = 2, label = 'Failure Line')
+        plt.plot(sig_fault, tau_fault, 'og', markerfacecolor = 'g', label = 'Fault Point')
 
-    plt.grid()
-    plt.axis('equal')
-    plt.xlim([0, Sig0[0]])
-    plt.ylim([0, 2 * R1])
-    plt.xlabel(r'$\sigma$ effective [bars]')
-    plt.ylabel(r'$\tau$ [bars]')
-    plt.legend()
-    plt.title('Mohr\'s Circle Analysis for a Single Fault')
-    plt.show()
+        plt.grid()
+        plt.xlim(left = 0, right = Sig0[0])
+        plt.ylim(bottom = 0, top = 2 * R1)
+        plt.gca().set_aspect('equal', adjustable = 'box')
+        plt.xlabel(r'$\sigma$ effective [bars]')
+        plt.ylabel(r'$\tau$ [bars]')
+        plt.legend()
+        plt.title('Mohr\'s Circle Analysis for a Single Fault')
+        plt.show()
 
-    return ppfail, cff, scu, sig_fault, tau_fault
+    return ppfail, cff, scu, sig_fault, tau_fault, SHmax_mag, Shmin_mag

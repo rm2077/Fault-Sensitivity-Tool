@@ -1,50 +1,43 @@
-'''
-Import data from CSV file
-
-Inputs:
-N/A
-
-Outputs:
-Sig0    : array
-    Initial principal stresses (contains 3 elements)
-ixSv    : int
-    Vertical principal stress index (1, 2, or 3)
-p0      : float
-    Initial pore pressure
-strike  : int
-    Strike fault orientation in degrees
-dip     : int
-    Dip fault orientation in degrees
-SHdir   : int
-    Maximum horizontal stress direction in degrees
-dp      : float
-    Pressure pertubation
-mu      : float
-    Friction coefficient
-APhi    : float, optional
-    Friction angle parameter, default: None
-ref_mu  : float, optional
-    Reference friction angle, default: None
-biot    : float, optional
-    Biot coefficient (Poroelasticity), default: 1.0
-nu      : float, optional
-    Poisson's ratio (Poroelasticity), default: 0.5
-'''
-
 import pandas as pd
 
 def import_data():
-    df = pd.read_csv('input.csv')
+    # Import CSV files
+    params_df = pd.read_csv('Params Input Table.csv')
+    faults_df = pd.read_csv('Faults Input Table.csv')
 
-    Sig0 = df[df.columns[0]].apply(lambda x: list(map(int, x.split(',')))).tolist()
-    ixSv = df[df.columns[1]].tolist()
-    strike = df[df.columns[2]].tolist()
-    dip = df[df.columns[3]].tolist()
-    SHdir = df[df.columns[4]].tolist()
-    p0 = df[df.columns[5]].tolist()
-    dp = df[df.columns[6]].tolist()
-    mu = df[df.columns[7]].tolist()
-    biot = df[df.columns[8]].tolist()
-    nu = df[df.columns[9]].tolist()
+    # Define column names
+    column_names = [
+        'seg_x_cntrpt', 'seg_y_cntrpt', 'seg_len', 'strike', 'strike_dist', 'strike_param', 'dip', 
+        'dip_dist', 'dip_param', 'mu', 'mu_dist', 'mu_param', 'SHdir', 'SHdir_dist', 'SHdir_param', 
+        'p0', 'p0_dist', 'p0_param', 'dp', 'dp_dist', 'dp_param', 'APhi', 'APhi_dist', 'APhi_param', 
+        'Sv_mag', 'Sv_mag_dist', 'Sv_mag_param', 'SHmax_mag', 'SHmax_mag_dist', 'SHmax_mag_param', 
+        'Shmin_mag', 'Shmin_mag_dist', 'Shmin_mag_param', 'ref_mu', 'biot', 'nu'
+    ]
 
-    return Sig0, ixSv, strike, dip, SHdir, p0, dp, mu, biot, nu
+    # Store parameters
+    params = {}
+
+    for col, name in zip(df.columns, column_names):
+        params[name] = df[col].iloc[0] if not df[col].isnull().all() else None
+
+    # Set default values if any parameter is empty
+    defaults = {
+        'seg_len': 10000,
+        'mu': 0.6,
+        'mu_dist': 'Normal',
+        'mu_param': 0.05,
+        'p0': 0.44 * params.get('seg_len', 10000),
+        'Sv_mag': 1.1 * params.get('seg_len', 10000),
+        'ref_mu': 0.6,
+        'biot': 1.0,
+        'nu': 0.5
+    }
+
+    # Update parameters with defaults
+    for key, value in defaults.items():
+        if not params.get(key):
+            params[key] = value
+
+    return params
+
+import_data()

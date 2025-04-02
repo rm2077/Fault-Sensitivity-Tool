@@ -1,47 +1,22 @@
-'''
-Run Monte Carlo simulation on 3D Mohr's Circle function with stochastic inputs
-
-Inputs:
-f       : function
-    Function handle
-in0     : array
-    Baseline inputs for f
-inSig   : array
-    Variance values for each element of in0
-nruns   : int
-    Monte Carlo runs, default: Uniform
-dist    : str, default: Uniform
-    Distribution ("Uniform", "Normal", or "Lognormal")
-
-Outputs:
-out     : Array
-    Output values from each run
-inj     : Array of arrays
-    Perturbed input values for each run
-'''
-
 import numpy as np
 
-def monte_carlo(f, in0, inSig, nruns = 1000, dist = "Uniform"):
-    # Preallocate output arrays
-    out = np.zeros(nruns)
-    inj = [in0.copy() for _ in range(nruns)]
+def monte_carlo(f, in0, inSig, nruns, dist, dist_param):
+    in0 = np.array(in0)
+    inSig = np.array(inSig)
+    dist_param = np.array(dist_param)
 
     # Run Monte Carlo simulation
-    for i in range(nruns):
-        # Perturb each input according to specified distribution
-        for j in range(len(in0)):
-            if dist == "Uniform":
-                inj[i][j] = np.random.uniform(in0[j] - inSig[j], in0[j] + inSig[j])
-            elif dist == "Normal":
-                inj[i][j] = np.random.normal(in0[j], inSig[j])
-            elif dist == "Lognormal":
-                inj[i][j] = np.random.lognormal(np.log(in0[j]), inSig[j])
-            else:
-                raise ValueError("Unknown distribution specified.")
+    if dist == 'Uniform':
+        inj = np.random.uniform(, , size = (nruns, len(in0)))
+    elif dist == 'Normal':
+        inj = np.random.normal(, , size = (nruns, len(in0)))
+    elif dist == 'Lognormal':
+        inj = np.random.lognormal(, , size = (nruns, len(in0)))
+    else:
+        raise ValueError(f'Unknown distribution: {dist}')
 
-        # Run function with perturbed inputs
-        result = f(*inj[i])
-        out[i] = result[0]
+    # Run function with perturbed inputs
+    results = np.apply_along_axis(lambda params: f(*params, plot = False), 1, inj)
+    out = np.asarray(results)[:, 0]
 
     return out, inj

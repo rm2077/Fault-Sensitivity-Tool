@@ -1,23 +1,3 @@
-'''
-Calculate horizontal stresses from critical stress assumptions
-
-Inputs:
-APhi    : float
-    Stress estimation parameter
-Sv      : float
-    Vertical stress
-ref_mu  : float
-    Friction angle in degrees
-p0      : float
-    Pore pressure
-
-Outputs:
-SH  : float
-    Maximum horizontal stress
-Sh  : float
-    Minimum horizontal stress
-'''
-
 import numpy as np
 
 def get_hor_from_APhi(APhi, Sv, ref_mu, p0):
