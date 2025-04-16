@@ -1,43 +1,157 @@
 import pandas as pd
 
-def import_data():
-    # Import CSV files
-    params_df = pd.read_csv('Params Input Table.csv')
-    faults_df = pd.read_csv('Faults Input Table.csv')
+# Default values
+DEFAULTS = {
+    'units': 'SI',
+    'ref_mu': {'SI': 3.0, 'Imperial': 10000.0},
+    'Sv_grad': {'SI': 25.0, 'Imperial': 1.1},
+    'Sv_grad_dist': 'uniform',
+    'Sv_grad_param': {'SI': 0.2, 'Imperial': 0.01},
+    'mu': 0.6,
+    'mu_dist': 'uniform',
+    'mu_param': 0.01,
+    'strike_dist': 'uniform',
+    'strike_param': 5.0,
+    'dip_dist': 'uniform',
+    'dip_param': 5.0,
+    'Pp': {'SI': 10.0, 'Imperial': 0.44},
+    'Pp_dist': 'normal',
+    'Pp_param': {'SI': 0.2, 'Imperial': 0.01},
+    'SHmax_or_dist': 'normal',
+    'SHmax_or_param': 5.0,
+    'Aphi_dist': 'normal',
+    'Aphi_param': 0.1,
+    'SHmax_mag_dist': 'normal',
+    'SHmax_mag_param': {'SI': 0.2, 'Imperial': 0.01},
+    'Shmin_mag_dist': 'normal',
+    'Shmin_mag_param': {'SI': 0.2, 'Imperial': 0.01},
+}
 
-    # Define column names
-    column_names = [
-        'seg_x_cntrpt', 'seg_y_cntrpt', 'seg_len', 'strike', 'strike_dist', 'strike_param', 'dip', 
-        'dip_dist', 'dip_param', 'mu', 'mu_dist', 'mu_param', 'SHdir', 'SHdir_dist', 'SHdir_param', 
-        'p0', 'p0_dist', 'p0_param', 'dp', 'dp_dist', 'dp_param', 'APhi', 'APhi_dist', 'APhi_param', 
-        'Sv_mag', 'Sv_mag_dist', 'Sv_mag_param', 'SHmax_mag', 'SHmax_mag_dist', 'SHmax_mag_param', 
-        'Shmin_mag', 'Shmin_mag_dist', 'Shmin_mag_param', 'ref_mu', 'biot', 'nu'
-    ]
+# Required values
+REQUIRED_FAULT_FIELDS = ['center_X', 'center_Y', 'strike', 'dip', 'length']
 
-    # Store parameters
-    params = {}
+# Apply default parameters to Params Input Table
+def apply_param_defaults(params_row, units):
+    for key, default in DEFAULTS.items():
+        if key in params_row and pd.isna(params_row[key]):
+            if isinstance(default, dict):
+                params_row[key] = default.get(units)
+            else:
+                params_row[key] = default
 
-    for col, name in zip(df.columns, column_names):
-        params[name] = df[col].iloc[0] if not df[col].isnull().all() else None
+    return params_row
 
-    # Set default values if any parameter is empty
-    defaults = {
-        'seg_len': 10000,
-        'mu': 0.6,
-        'mu_dist': 'Normal',
-        'mu_param': 0.05,
-        'p0': 0.44 * params.get('seg_len', 10000),
-        'Sv_mag': 1.1 * params.get('seg_len', 10000),
-        'ref_mu': 0.6,
-        'biot': 1.0,
-        'nu': 0.5
+# Apply default parameters to Faults Input Table
+def apply_fault_defaults(faults_df, units):
+    for key, default in DEFAULTS.items():
+        if key in faults_df and faults_df[key].isnull().all():
+            if isinstance(default, dict):
+                faults_df[key] = default.get(units)
+            else:
+                faults_df[key] = default
+
+    return faults_df
+
+# Load input tables
+def load_input_tables(params_path, faults_path):
+    # Column mapping for Params Input Table
+    param_column_mapping = {
+        'units': 'units',
+        'ref_depth_km_or_ft': 'ref_mu',
+        'Sv_gradient_MPa_km_or_psi_ft': 'Sv_grad',
+        'Sv_grad_func_form': 'Sv_grad_dist',
+        'Sv_grad_param2_MPa_km_or_psi_ft': 'Sv_grad_param',
+        'fault_friction_coefficient': 'mu',
+        'fric_coef_functional_form': 'mu_dist',
+        'fric_coef_param2': 'mu_param',
+        'strike_func_form': 'strike_dist',
+        'strike_param2_deg': 'strike_param',
+        'dip_func_form': 'dip_dist',
+        'dip_param2_deg': 'dip_param',
+        'background_pore_pressure_grad_MPa_km_or_psi_ft': 'Pp',
+        'pore_press_func_form': 'Pp_dist',
+        'pore_press_grad_param2_MPa_km_or_psi_ft': 'Pp_param',
+        'SHmax_orientation_deg_clockwise_from_N': 'SHmax_or',
+        'SHmax_or_func_form': 'SHmax_or_dist',
+        'SHmax_or_param2_deg': 'SHmax_or_param',
+        'Aphi': 'Aphi',
+        'Aphi_func_form': 'Aphi_dist',
+        'Aphi_param2': 'Aphi_param',
+        'SHmax_magnitude_gradient_if_no_Aphi_MPa_km_or_psi_ft': 'SHmax_mag',
+        'SHmax_mag_func_form': 'SHmax_mag_dist',
+        'SHmax_mag_param2_Mpa_km_or_psi_ft': 'SHmax_mag_param',
+        'Shmin_mag_if_no_Aphi_MPa_km_or_psi_ft': 'Shmin_mag',
+        'Shmin_mag_func_form': 'Shmin_mag_dist',
+        'Shmin_mag_param2_MPa_km_or_psi_ft': 'Shmin_mag_param'
     }
 
-    # Update parameters with defaults
-    for key, value in defaults.items():
-        if not params.get(key):
-            params[key] = value
+    # Column mapping for Faults Input Table
+    fault_column_mapping = {
+        'center_X': 'center_X',
+        'center_Y': 'center_Y',
+        'strike_deg_clockwise_from_north': 'strike',
+        'dip_deg_from_horiz': 'dip',
+        'length': 'length',
+        'Sv_gradient_MPa_km_or_psi_ft': 'Sv_grad',
+        'Sv_grad_func_form': 'Sv_grad_dist',
+        'Sv_grad_param2_MPa_km_or_psi_ft': 'Sv_grad_param',
+        'fault_friction_coefficient': 'mu',
+        'fric_coef_functional_form': 'mu_dist',
+        'fric_coef_param2': 'mu_param',
+        'strike_func_form': 'strike_dist',
+        'strike_param2_deg': 'strike_param',
+        'dip_func_form': 'dip_dist',
+        'dip_param2_deg': 'dip_param',
+        'background_pore_pressure_gradient_at_fault_center_MPa_km_or_psi_ft': 'Pp',
+        'pore_press_func_form': 'Pp_dist',
+        'pore_press_grad_param2_MPa_km_or_psi_ft': 'Pp_param',
+        'SHmax_orientation_fault_center_deg_clockwise_from_N': 'SHmax_or',
+        'SHmax_or_func_form': 'SHmax_or_dist',
+        'SHmax_or_param2_deg': 'SHmax_or_param',
+        'Aphi_at_fault_center': 'Aphi',
+        'Aphi_func_form': 'Aphi_dist',
+        'Aphi_param2': 'Aphi_param',
+        'SHmax_magnitude_gradient_fault_center_if_no_Aphi_MPa_km_or_psi_ft': 'SHmax_mag',
+        'SHmax_mag_func_form': 'SHmax_mag_dist',
+        'SHmax_mag_param2_Mpa_km_or_psi_ft': 'SHmax_mag_param',
+        'Shmin_mag_fault_center_if_no_Aphi_MPa_km_or_psi_ft': 'Shmin_mag',
+        'Shmin_mag_func_form': 'Shmin_mag_dist',
+        'Shmin_mag_param2_MPa_km_or_psi_ft': 'Shmin_mag_param'
+    }
 
-    return params
+    # Load Params Input Table
+    params_df = pd.read_csv(params_path).rename(columns=param_column_mapping)
 
-import_data()
+    if params_df.shape[0] != 1:
+        raise ValueError("Params Input Table must contain exactly one row.")
+
+    params_row = params_df.iloc[0].to_dict()
+    units = 'Imperial' if params_row.get('units') == 'Imperial' else 'SI'
+    params_row = apply_param_defaults(params_row, units)
+
+    # Load Faults Input Table
+    faults_df = pd.read_csv(faults_path).rename(columns=fault_column_mapping)
+    faults_df = apply_fault_defaults(faults_df, units)
+
+    # Validate required fault fields
+    for field in REQUIRED_FAULT_FIELDS:
+        if faults_df[field].isnull().any():
+            raise ValueError(f"Missing required fault field: {field}")
+
+    # Override empty fault parameters
+    override_fields = [
+        'mu', 'mu_dist', 'mu_param',
+        'strike_dist', 'strike_param',
+        'dip_dist', 'dip_param',
+        'Pp', 'Pp_dist', 'Pp_param',
+        'SHmax_or', 'SHmax_or_dist', 'SHmax_or_param',
+        'Aphi', 'Aphi_dist', 'Aphi_param',
+        'SHmax_mag', 'SHmax_mag_dist', 'SHmax_mag_param',
+        'Shmin_mag', 'Shmin_mag_dist', 'Shmin_mag_param'
+    ]
+
+    for field in override_fields:
+        if field in params_row:
+            faults_df[field] = faults_df.get(field, pd.Series([None]*len(faults_df))).fillna(params_row[field])
+
+    return params_row, faults_df
