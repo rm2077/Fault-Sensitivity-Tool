@@ -1,22 +1,21 @@
 import numpy as np
 
-def monte_carlo(f, in0, inSig, nruns, dist, dist_param):
+def monte_carlo(f, in0, idx, std, dist, nruns=1000):
     in0 = np.array(in0)
-    inSig = np.array(inSig)
-    dist_param = np.array(dist_param)
+    inj = np.tile(in0, (nruns, 1))
 
-    # Run Monte Carlo simulation
-    if dist == 'Uniform':
-        inj = np.random.uniform(, , size = (nruns, len(in0)))
-    elif dist == 'Normal':
-        inj = np.random.normal(, , size = (nruns, len(in0)))
-    elif dist == 'Lognormal':
-        inj = np.random.lognormal(, , size = (nruns, len(in0)))
+    if dist == "uniform":
+        inj[:, idx] = np.random.uniform(in0[idx] - std, in0[idx] + std, nruns)
+    elif dist == "normal":
+        inj[:, idx] = np.random.normal(in0[idx], std, nruns)
+    elif dist == "lognormal":
+        sigma_ln = np.sqrt(np.log(1 + (std / in0[idx]) ** 2))
+        mean_ln = np.log(in0[idx]) - 0.5 * sigma_ln**2
+        inj[:, idx] = np.random.lognormal(mean_ln, sigma_ln, nruns)
+    elif np.isnan(dist):
+        return None, None
     else:
-        raise ValueError(f'Unknown distribution: {dist}')
+        raise ValueError(f"Unknown distribution: {dist}")
 
-    # Run function with perturbed inputs
-    results = np.apply_along_axis(lambda params: f(*params, plot = False), 1, inj)
-    out = np.asarray(results)[:, 0]
-
-    return out, inj
+    results = np.apply_along_axis(lambda params: f(*params), 1, inj)
+    return results, inj
