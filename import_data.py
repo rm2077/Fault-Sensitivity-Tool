@@ -4,6 +4,7 @@ import pandas as pd
 DEFAULTS = {
     'units': 'SI',
     'ref_mu': {'SI': 3.0, 'Imperial': 10000.0},
+    'name': 'Fault',
     'Sv_grad': {'SI': 25.0, 'Imperial': 1.1},
     'Sv_grad_dist': 'uniform',
     'Sv_grad_param': {'SI': 0.2, 'Imperial': 0.01},
@@ -29,17 +30,6 @@ DEFAULTS = {
 
 # Required values
 REQUIRED_FAULT_FIELDS = ['center_X', 'center_Y', 'strike', 'dip', 'length']
-
-# Apply default parameters to Params Input Table
-def apply_param_defaults(params_row, units):
-    for key, default in DEFAULTS.items():
-        if key in params_row and pd.isna(params_row[key]):
-            if isinstance(default, dict):
-                params_row[key] = default.get(units)
-            else:
-                params_row[key] = default
-
-    return params_row
 
 # Apply default parameters to Faults Input Table
 def apply_fault_defaults(faults_df, units):
@@ -121,13 +111,14 @@ def load_input_tables(params_path, faults_path):
 
     # Load Params Input Table
     params_df = pd.read_csv(params_path).rename(columns=param_column_mapping)
-
     if params_df.shape[0] != 1:
         raise ValueError("Params Input Table must contain exactly one row.")
 
     params_row = params_df.iloc[0].to_dict()
     units = 'Imperial' if params_row.get('units') == 'Imperial' else 'SI'
-    params_row = apply_param_defaults(params_row, units)
+    if pd.isna(params_row.get("ref_mu")):
+        default_value = DEFAULTS["ref_mu"].get(units) if isinstance(DEFAULTS["ref_mu"], dict) else DEFAULTS["ref_mu"]
+        params_row["ref_mu"] = default_value
 
     # Load Faults Input Table
     faults_df = pd.read_csv(faults_path).rename(columns=fault_column_mapping)
