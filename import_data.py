@@ -1,7 +1,10 @@
 import pandas as pd
 
+# Required values
+REQUIRED_FAULT_FIELDS = ['center_X', 'center_Y', 'strike', 'dip', 'length']
+
 # Default values
-DEFAULTS = {
+DEFAULT_VALUES = {
     'units': 'SI',
     'ref_mu': {'SI': 3.0, 'Imperial': 10000.0},
     'name': 'Fault',
@@ -27,20 +30,6 @@ DEFAULTS = {
     'Shmin_mag_dist': 'normal',
     'Shmin_mag_param': {'SI': 0.2, 'Imperial': 0.01},
 }
-
-# Required values
-REQUIRED_FAULT_FIELDS = ['center_X', 'center_Y', 'strike', 'dip', 'length']
-
-# Apply default parameters to Faults Input Table
-def apply_fault_defaults(faults_df, units):
-    for key, default in DEFAULTS.items():
-        if key in faults_df and faults_df[key].isnull().all():
-            if isinstance(default, dict):
-                faults_df[key] = default.get(units)
-            else:
-                faults_df[key] = default
-
-    return faults_df
 
 # Load input tables
 def load_input_tables(params_path, faults_path):
@@ -115,22 +104,24 @@ def load_input_tables(params_path, faults_path):
         raise ValueError("Params Input Table must contain exactly one row.")
 
     params_row = params_df.iloc[0].to_dict()
-    units = 'Imperial' if params_row.get('units') == 'Imperial' else 'SI'
-    if pd.isna(params_row.get("ref_mu")):
-        default_value = DEFAULTS["ref_mu"].get(units) if isinstance(DEFAULTS["ref_mu"], dict) else DEFAULTS["ref_mu"]
-        params_row["ref_mu"] = default_value
+    if pd.isna(params_row['units']):
+        raise ValueError("Missing required 'units' value in Params Input Table.")
+
+    units = 'Imperial' if params_row['units'] == 'Imperial' else 'SI'
+    if pd.isna(params_row["ref_mu"]):
+        params_row["ref_mu"] = DEFAULT_VALUES["ref_mu"][units]
 
     # Load Faults Input Table
     faults_df = pd.read_csv(faults_path).rename(columns=fault_column_mapping)
-    faults_df = apply_fault_defaults(faults_df, units)
 
     # Validate required fault fields
     for field in REQUIRED_FAULT_FIELDS:
         if faults_df[field].isnull().any():
-            raise ValueError(f"Missing required fault field: {field}")
+            raise ValueError(f"Missing required {field} field in Faults Input Table.")
 
     # Override empty fault parameters
     override_fields = [
+        'Sv_grad', 'Sv_grad_dist', 'Sv_grad_param',
         'mu', 'mu_dist', 'mu_param',
         'strike_dist', 'strike_param',
         'dip_dist', 'dip_param',
@@ -143,6 +134,16 @@ def load_input_tables(params_path, faults_path):
 
     for field in override_fields:
         if field in params_row:
-            faults_df[field] = faults_df.get(field, pd.Series([None]*len(faults_df))).fillna(params_row[field])
+            faults_df[field] = faults_df.get(field, pd.Series([None] * len(faults_df))).fillna(params_row[field])
+
+    # Apply default parameters to Faults Input Table
+    for key, default in DEFAULT_VALUES.items():
+        if key in faults_df:
+            default_value = default[units] if isinstance(default, dict) else default
+            faults_df[key] = faults_df[key].fillna(default_value)
+
+    for i, row in faults_df.iterrows():
+        if pd.isna(row['Aphi']) and (pd.isna(row['SHmax_mag']) or pd.isna(row['Shmin_mag'])):
+            raise ValueError(f"Missing Aphi, SHmax_mag, and/or Shmin_mag.")
 
     return params_row, faults_df

@@ -1,97 +1,95 @@
-import matplotlib.pyplot as plt
-import numpy as np
 from mohrs_3D_v2 import mohrs_3D_v2
 from monte_carlo import monte_carlo
+import matplotlib.cm as cm
+import matplotlib.colors as colors
+import matplotlib.pyplot as plt
+import numpy as np
 
-# Build wrapper for mohrs_3D_v2
-def wrapper(fault, param_values, ref_mu, name):
-    def f(*params):
-        kwargs = fault.copy()
+def ppfail_MC(variables, dist_params, unit_type, nruns=1000, plot=True):
+    dists = {}
+    params = {}
+    ppfail_results = []
 
-        # Parameters expected by mohrs_3D_v2
-        valid_keys = ['strike', 'dip', 'Sv_grad', 'mu', 'Pp', 'SHmax_or', 'Aphi', 'SHmax_mag', 'Shmin_mag']
-        kwargs = {key: value for key, value in kwargs.items() if key in valid_keys}
+    units = {
+        'Sv_grad': {'SI': 'Mpa/km', 'Imperial': 'PSI/ft'},
+        'mu': 'Coefficient of Friction',
+        'strike': 'Degrees',
+        'dip': 'Degrees',
+        'Pp': {'SI': 'Mpa/km', 'Imperial': 'PSI/ft'},
+        'SHmax_or': 'Degrees',
+        'Aphi': 'Relative Stress Magnitude',
+        'SHmax_mag': {'SI': 'Mpa/km', 'Imperial': 'PSI/ft'},
+        'Shmin_mag': {'SI': 'Mpa/km', 'Imperial': 'PSI/ft'}
+    }
 
-        # Add parameter values to kwargs
-        for i, param in enumerate(valid_keys):
-            kwargs[param] = param_values[i]
+    for key in dist_params:
+        if key.endswith("_dist"):
+            base_var = key[:-5]
+            dists[base_var] = dist_params[key]
+        elif key.endswith("_param"):
+            base_var = key[:-6]
+            params[base_var] = dist_params[key]
 
-        kwargs['ref_mu'] = ref_mu
-        kwargs['name'] = name
+    num_faults = len(variables["strike"])
+    num_vars = len(dists)
 
-        # Call mohrs_3D_v2 with the filtered arguments
-        return mohrs_3D_v2(**kwargs, plot=False, data=False)
+    for fault_idx in range(num_faults):
+        ncols = int(np.ceil(np.sqrt(num_vars)))
+        nrows = int(np.ceil(num_vars / ncols))
 
-    return f
+        fig, axes = plt.subplots(nrows, ncols, figsize=(8 * ncols, 6 * nrows))
+        fig.subplots_adjust(top=0.95)
+        fig.suptitle(f"Monte Carlo Histograms - {variables['name'][fault_idx]}", fontsize=20)
+        axes = axes.flatten()
 
-def ppfail_MC_single(fault_row, strike, dip, mu, SHmax_or, Pp, Aphi, Sv_grad, SHmax_mag, Shmin_mag, ref_mu, name, nruns=1000):
-    fault_dict = fault_row.to_dict()
-    f = wrapper(fault_dict, [strike, dip, Sv_grad, mu, Pp, SHmax_or, Aphi, SHmax_mag, Shmin_mag], ref_mu, name)
-    in0 = np.array([fault_row[param] for param in ['strike', 'dip', 'Sv_grad', 'mu', 'Pp', 'SHmax_or', 'Aphi', 'SHmax_mag', 'Shmin_mag']])
-    results = {}
+        for i, var in enumerate(list(dists.keys())):
+            dist_type = dists[var]
+            dist_param = params.get(var)
+            result, perturbed = monte_carlo(mohrs_3D_v2, variables, dist_type, dist_param, var, nruns)
+            ppfail_results.append(result[:, fault_idx])
+            data = perturbed[:, fault_idx]
 
-    for i, param in enumerate(['strike', 'dip', 'Sv_grad', 'mu', 'Pp', 'SHmax_or', 'Aphi', 'SHmax_mag', 'Shmin_mag']):
-        dist = fault_row[f"{param}_dist"]
-        std = fault_row[f"{param}_param"]
+            ax = axes[i]
+            if np.any(np.isnan(data)):
+                ax.set_visible(False)
+                continue
 
-        if dist is None:
-            continue
+            unit_label = units.get(var, "")
+            if isinstance(unit_label, dict):
+                unit_label = unit_label.get(unit_type, "")
 
-        mc_out, _ = monte_carlo(f, in0, i, std, dist, nruns=nruns)
-        if mc_out is not None:
-            results[param] = mc_out
+            ax.hist(data, bins=25, edgecolor="black")
+            ax.axvline(np.mean(data), color='orange', linewidth=3, label="Mean")
+            counts, _ = np.histogram(data, bins=25)
+            ax.axhline(np.mean(counts), color='red', linewidth=3, label="Shape")
 
-    plot_mc_histograms(results, results.keys(), fault_row['name'])
-    return results
+            ax.legend()
+            ax.set_title(var)
+            ax.set_xlabel(unit_label)
+            ax.set_ylabel("Number of Realizations")
 
-def ppfail_MC_all(faults_df, strike, dip, mu, SHmax_or, Pp, Aphi, Sv_grad, SHmax_mag, Shmin_mag, ref_mu, name, nruns=1000):
-    output = {}
+        if plot:
+            plt.show()
 
-    for idx, row in faults_df.iterrows():
-        print(f"Running Monte Carlo for fault: {row['name']}")
+    fig, ax = plt.subplots()
+    cmap = cm.get_cmap('RdYlGn')
+    norm = colors.Normalize(vmin=0, vmax=3500)
+    scalar_map = cm.ScalarMappable(norm=norm, cmap=cmap)
 
-        # Pass the individual parameters along with the fault row
-        results = ppfail_MC_single(row, strike, dip, mu, SHmax_or, Pp, Aphi, Sv_grad, SHmax_mag, Shmin_mag, ref_mu, name, nruns)
-        output[row['name']] = results
-    return output
+    for fault_idx in range(num_faults):
+        # Collect the ppfail distribution from the Monte Carlo result
+        ppfail_values = np.sort(ppfail_results[fault_idx])
+        cum_prob = np.linspace(0, 1, len(ppfail_values))
+        color = scalar_map.to_rgba(np.mean(ppfail_values))
+        ax.plot(ppfail_values, cum_prob, label=variables["name"][fault_idx], color=color)
 
-def plot_mc_histograms(results_dict, param_names, fault_name):
-    fig, axes = plt.subplots(3, 3, figsize=(15, 12))
-    axes = axes.flatten()
+    scalar_map.set_array([0, 3500])
+    cbar = plt.colorbar(scalar_map, ax=ax, orientation='horizontal')
+    cbar.set_label("Delta PP to slip")
 
-    for i, param in enumerate(param_names):
-        ax = axes[i]
-        ax.hist(results_dict[param], bins=30, alpha=0.7, color='skyblue', edgecolor='black')
-        ax.set_title(f'{param}')
-        ax.set_xlabel('ppfail')
-        ax.set_ylabel('Frequency')
-
-    fig.suptitle(f'Monte Carlo Histograms for {fault_name}', fontsize=16)
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    ax.set_xlabel("Delta Pore Pressure to Slip")
+    ax.set_ylabel("Probability of Fault Slip")
+    ax.set_title("Cumulative Distribution Delta Pore Pressure to Slip")
+    ax.grid(True)
+    ax.legend(loc="lower right")
     plt.show()
-
-# # Plot results
-# num_params = len(param_names)
-# fig, axes = plt.subplots(2, num_params, figsize=(4 * num_params, 8))
-# axes = axes.flatten()
-
-# for j, param in enumerate(param_names):
-#     ax_in = axes[j]
-#     ax_in.hist(inj[:, j], bins=30, density=True, alpha=0.7, color="orange", edgecolor="black")
-#     ax_in.set_title(f"{param} Distribution")
-#     ax_in.set_xlabel(param)
-#     ax_in.set_ylabel("Density")
-#     ax_in.grid(True)
-
-# ax_out = axes[-1]
-# ax_out.hist(out, bins=30, density=True, alpha=0.7, color="steelblue", edgecolor="black")
-# ax_out.set_title(f"ppfail for {fault['name']}")
-# ax_out.set_xlabel("Pore Pressure to Failure")
-# ax_out.set_ylabel("Density")
-# ax_out.grid(True)
-
-# fig.suptitle(f"Monte Carlo Simulation - {fault['name']}")
-# plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-# plt.show()
-
-# return results

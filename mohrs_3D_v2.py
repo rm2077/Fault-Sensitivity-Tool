@@ -8,17 +8,48 @@ from get_hor_from_APhi import get_hor_from_APhi
 def get_value(x, i):
     return x[i] if hasattr(x, '__getitem__') else x
 
+# Plot Mohr's Circles
+def plot_mohrs_circles(Sig0, Pp_i, mu_i, fault_points=None, scalar_map=None, title_suffix=''):
+    angles = np.linspace(0, 2 * np.pi, 100)
+    R1 = 0.5 * (Sig0[0] - Sig0[2])
+    R2 = 0.5 * (Sig0[1] - Sig0[2])
+    R3 = 0.5 * (Sig0[0] - Sig0[1])
+    C1 = (R1 * np.exp(1j * angles) + (Sig0[0] + Sig0[2]) / 2 - Pp_i) * 100
+    C2 = (R2 * np.exp(1j * angles) + (Sig0[1] + Sig0[2]) / 2 - Pp_i) * 100
+    C3 = (R3 * np.exp(1j * angles) + (Sig0[0] + Sig0[1]) / 2 - Pp_i) * 100
+
+    fig, ax = plt.subplots()
+    ax.plot(np.real(C1), np.imag(C1), 'k')
+    ax.plot(np.real(C2), np.imag(C2), 'k')
+    ax.plot(np.real(C3), np.imag(C3), 'k')
+    ax.plot([0, Sig0[0] * 100], mu_i * np.array([0, Sig0[0]]) * 100, 'r', linewidth=2, label='Failure Line')
+
+    if fault_points:
+        for sig, tau, color in fault_points:
+            ax.plot(sig, tau, 'o', color=color, markeredgecolor='k')
+
+    if scalar_map:
+        scalar_map.set_array([0, 3500])
+        cbar = plt.colorbar(scalar_map, orientation='horizontal', ax=ax, pad=0.15)
+        cbar.set_label('Delta PP to slip')
+
+    ax.grid()
+    ax.set_xlim(left=0)
+    ax.set_ylim(bottom=0)
+    ax.set_xlabel(r'$\sigma$ effective')
+    ax.set_ylabel(r'$\tau$')
+    ax.set_title(f"Mohr's Circle {title_suffix}")
+    ax.set_aspect('equal', adjustable='box')
+    ax.legend()
+    plt.show()
+
 def mohrs_3D_v2(strike, dip, mu, SHmax_or, Pp, Aphi, Sv_grad, SHmax_mag, Shmin_mag, ref_mu, name, biot=1.0, nu=0.5, plot=True, data=True):
     num_faults = len(strike)
 
     # Store per-fault outputs
-    ppfail_list = []
-    cff_list = []
-    scu_list = []
-    sig_fault_list = []
-    tau_fault_list = []
-    fault_sigmas = []
-    fault_taus = []
+    ppfail_list, cff_list, scu_list = [], [], []
+    sig_fault_list, tau_fault_list = [], []
+    fault_points = []
 
     # Determine number of plots for Mohr's Circle
     scalar_inputs = [mu, SHmax_or, Pp, Aphi, Sv_grad, ref_mu]
@@ -27,7 +58,6 @@ def mohrs_3D_v2(strike, dip, mu, SHmax_or, Pp, Aphi, Sv_grad, SHmax_mag, Shmin_m
         all_scalar = True
 
     # Colorbar initialization
-    colors_list = []
     cmap = cm.get_cmap('RdYlGn')
     norm = colors.Normalize(vmin=0, vmax=3500)
     scalar_map = cm.ScalarMappable(norm=norm, cmap=cmap)
@@ -84,10 +114,8 @@ def mohrs_3D_v2(strike, dip, mu, SHmax_or, Pp, Aphi, Sv_grad, SHmax_mag, Shmin_m
         l, m, n = np.dot(uF, uS1), np.dot(uF, uS2), np.dot(uF, uS3)
 
         # Calculate output data
-        sig_fault = Sigv[0] * l**2 + Sigv[1] * m**2 + Sigv[2] * n**2
-        tau_fault = np.sqrt((Sigv[0] * l)**2 + (Sigv[1] * m)**2 + (Sigv[2] * n)**2 - sig_fault**2)
-        sig_fault *= 100
-        tau_fault *= 100
+        sig_fault = (Sigv[0] * l**2 + Sigv[1] * m**2 + Sigv[2] * n**2) * 100
+        tau_fault = np.sqrt((Sigv[0] * l)**2 + (Sigv[1] * m)**2 + (Sigv[2] * n)**2 - (sig_fault / 100)**2) * 100
         ppfail = sig_fault - tau_fault / mu_i
         cff = tau_fault - mu_i * sig_fault
         scu = tau_fault / (mu_i * sig_fault)
@@ -101,71 +129,13 @@ def mohrs_3D_v2(strike, dip, mu, SHmax_or, Pp, Aphi, Sv_grad, SHmax_mag, Shmin_m
 
         # Plot individual Mohr's Circles
         if all_scalar:
-            fault_sigmas.append(sig_fault)
-            fault_taus.append(tau_fault)
-            colors_list.append(scalar_map.to_rgba(ppfail))
+            fault_points.append((sig_fault, tau_fault, scalar_map.to_rgba(ppfail)))
         elif plot:
-            angles = np.linspace(0, 2 * np.pi, 100)
-            R1 = 0.5 * (Sig0[0] - Sig0[2])
-            R2 = 0.5 * (Sig0[1] - Sig0[2])
-            R3 = 0.5 * (Sig0[0] - Sig0[1])
-            C1 = (R1 * np.exp(1j * angles) + (Sig0[0] + Sig0[2]) / 2 - Pp_i) * 100
-            C2 = (R2 * np.exp(1j * angles) + (Sig0[1] + Sig0[2]) / 2 - Pp_i) * 100
-            C3 = (R3 * np.exp(1j * angles) + (Sig0[0] + Sig0[1]) / 2 - Pp_i) * 100
-
-            fig, ax = plt.subplots()
-            ax.plot(np.real(C1), np.imag(C1), 'k')
-            ax.plot(np.real(C2), np.imag(C2), 'k')
-            ax.plot(np.real(C3), np.imag(C3), 'k')
-            ax.plot([0, Sig0[0] * 100], mu_i * np.array([0, Sig0[0]]) * 100, 'r', linewidth=2, label='Failure Line')
-            ax.plot(sig_fault, tau_fault, 'o', color=scalar_map.to_rgba(ppfail), markeredgecolor='k', label='Fault Point')
-
-            scalar_map.set_array([0, 3500])
-            cbar = plt.colorbar(scalar_map, orientation='horizontal', ax=ax, pad=0.15)
-            cbar.set_label('Delta PP to slip (kPa)')
-
-            ax.grid()
-            ax.set_xlim(left=0)
-            ax.set_ylim(bottom=0)
-            ax.set_xlabel(r'$\sigma$ effective [kPa]')
-            ax.set_ylabel(r'$\tau$ [kPa]')
-            ax.set_title(f"Mohr's Circle for Fault {i+1}")
-            ax.set_aspect('equal', adjustable='box')
-            ax.legend()
-            plt.show()
+            plot_mohrs_circles(Sig0, Pp_i, mu_i, [(sig_fault, tau_fault, scalar_map.to_rgba(ppfail))], scalar_map, f"for Fault {i+1}")
 
     # Plot singular Mohr's Circles
     if all_scalar and plot:
-        angles = np.linspace(0, 2 * np.pi, 100)
-        R1 = 0.5 * (Sig0[0] - Sig0[2])
-        R2 = 0.5 * (Sig0[1] - Sig0[2])
-        R3 = 0.5 * (Sig0[0] - Sig0[1])
-        C1 = (R1 * np.exp(1j * angles) + (Sig0[0] + Sig0[2]) / 2 - Pp_i) * 100
-        C2 = (R2 * np.exp(1j * angles) + (Sig0[1] + Sig0[2]) / 2 - Pp_i) * 100
-        C3 = (R3 * np.exp(1j * angles) + (Sig0[0] + Sig0[1]) / 2 - Pp_i) * 100
-
-        fig, ax = plt.subplots()
-        ax.plot(np.real(C1), np.imag(C1), 'k')
-        ax.plot(np.real(C2), np.imag(C2), 'k')
-        ax.plot(np.real(C3), np.imag(C3), 'k')
-        ax.plot([0, Sig0[0] * 100], mu * np.array([0, Sig0[0]]) * 100, 'r', linewidth=2, label='Failure Line')
-        
-        for sig, tau, col in zip(fault_sigmas, fault_taus, colors_list):
-            ax.plot(sig, tau, 'o', color=col, markeredgecolor='k')
-
-        scalar_map.set_array([0, 3500])
-        cbar = plt.colorbar(scalar_map, orientation='horizontal', ax=ax, pad=0.15)
-        cbar.set_label('Delta PP to slip (kPa)')
-
-        ax.grid()
-        ax.set_xlim(left=0)
-        ax.set_ylim(bottom=0)
-        ax.set_xlabel(r'$\sigma$ effective [kPA]')
-        ax.set_ylabel(r'$\tau$ [kPa]')
-        ax.set_title("Mohr's Circle for All Faults")
-        ax.set_aspect('equal', adjustable='box')
-        ax.legend()
-        plt.show()
+        plot_mohrs_circles(Sig0, Pp_i, mu, fault_points, scalar_map, "for All Faults")
 
     if data:
         # Output verbose results
@@ -177,4 +147,4 @@ def mohrs_3D_v2(strike, dip, mu, SHmax_or, Pp, Aphi, Sv_grad, SHmax_mag, Shmin_m
             print(f"Effective normal stress projected onto fault (sig_fault): {sig_fault_list[i]:.3f}")
             print(f"Effective shear stress projected onto fault (tau_fault): {tau_fault_list[i]:.3f}")
 
-    return ppfail
+    return np.array(ppfail_list)
