@@ -43,7 +43,7 @@ def plot_mohrs_circles(Sig0, Pp_i, mu_i, fault_points=None, scalar_map=None, tit
     ax.legend()
     plt.show()
 
-def mohrs_3D_v2(strike, dip, mu, SHmax_or, Pp, Aphi, Sv_grad, SHmax_mag, Shmin_mag, ref_mu, name, biot=1.0, nu=0.5, plot=True, data=True):
+def mohrs_3D_v2(strike, dip, mu, SHmax_or, Pp, Aphi, Sv_grad, SHmax_mag, Shmin_mag, ref_mu, name, biot=1.0, nu=0.25, plot=True, data=True):
     num_faults = len(strike)
 
     # Store per-fault outputs
@@ -75,7 +75,7 @@ def mohrs_3D_v2(strike, dip, mu, SHmax_or, Pp, Aphi, Sv_grad, SHmax_mag, Shmin_m
             if not (0 <= Aphi_i <= 3):
                 raise ValueError(f'Aphi should be in [0,3]. Got: {Aphi_i}')
 
-            SHmax_mag_i, Shmin_mag_i = get_hor_from_APhi(Aphi_i, Sv_grad_i, ref_mu_i, Pp_i)
+            SHmax_mag_i, Shmin_mag_i = get_hor_from_APhi(Aphi_i, Sv_grad_i, Pp_i, ref_mu_i)
             if 0 <= Aphi_i < 1:
                 Sig0 = [Sv_grad_i, SHmax_mag_i, Shmin_mag_i]
                 ixSv = 0
